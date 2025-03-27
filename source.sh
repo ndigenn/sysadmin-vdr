@@ -36,6 +36,12 @@ Finding files with SUID Bit:
 Finding Shell Scripts:
 	sudo find / -type f -iname *.sh 2>/dev/null
 
+Audit .bashrc
+	not sure how to be doing this just yet, maybe grep for some common words
+
+Audit /etc/pam.d/
+	grep for some known malicious code
+
 --------------------------------------------------------------
 Polluting the box:
 
@@ -56,6 +62,16 @@ Files with SUID bit set
 
 Scripts on machine not made by current user:
 	shell scripts on different locations
+
+Bash RC malicious code injection
+	sshrc or rc file on system and executed whenever a new session is created
+
+--------------------------------------------------------------
+Flow:
+1. set necessary globals
+2. make sure to have control for necessary usage of script and any flags that the user can set
+3. have all output also go to an ouput file for the user to review afterwards
+4. check what os we are on
+5. have logging commands to terminal with COLOR to show which part of the script we are on
+
 '
-
-
