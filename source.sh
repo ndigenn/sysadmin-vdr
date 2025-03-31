@@ -73,7 +73,6 @@ Flow:
 3. have all output also go to an ouput file for the user to review afterwards
 4. check what os we are on
 5. have logging commands to terminal with COLOR to show which part of the script we are on
-
 '
 # setting colors 
 RED='\033[0;31m'
