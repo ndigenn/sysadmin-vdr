@@ -263,3 +263,29 @@ audit_suid_binaries() {
         fi
     done
 }
+
+audit_authorized_keys() {
+    log "INFO" "Checking for authorized_keys files..."
+    
+    # finding all authorized_keys files
+    authorized_keys_files=$(find / -name authorized_keys 2>/dev/null)
+    
+    echo "$authorized_keys_files" > authorized_keys_audit.txt
+    log "INFO" "Authorized_keys files saved to authorized_keys_audit.txt"
+
+    # get sudoers
+    log "INFO" "Getting sudoers..."
+    sudoers=$(getent group sudo | cut -d: -f4)
+    echo "$sudoers" > sudoers_audit.txt
+    echo "root" >> sudoers_audit.txt
+    log "INFO" "Sudoers saved to sudoers_audit.txt"
+
+    # check for authorized_keys files for sudoers and root
+    while IFS= read -r pattern <&3; do
+        if grep -q -F "$pattern" authorized_keys_audit.txt; then
+            log "WARNING" "Sudoer \"$pattern\" has an authorized_keys file"
+            echo "Sudoer \"$pattern\" has an authorized_keys file" >> sudoer_keys_audit.txt
+        fi
+    done 3<sudoers_audit.txt
+    
+}
