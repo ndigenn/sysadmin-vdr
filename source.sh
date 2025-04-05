@@ -289,12 +289,39 @@ audit_authorized_keys() {
             if [ "$pattern" = "root" ]; then
                 log "CRITICAL" "Root has an authorized_keys file! Immediate remediation is highly encouraged!"
                 echo "Root has an authorized_keys file! Immediate remediation is highly encouraged!" >> sudoer_keys_audit.txt
+
+                #remediation
+                if [ "$REMEDIATE" = true ]; then
+                    read -p "Remove root's authorized_keys file? (y/n) " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
+                        if [ $? -eq 0 ]; then
+                            log "SUCCESS" "Removed root's authorized_keys file"
+                        else
+                            log "ERROR" "Failed to remove root's authorized_keys file"
+                        fi
+                    fi
+                fi
             else
                 log "WARNING" "Sudoer \"$pattern\" has an authorized_keys file"
                 echo "Sudoer \"$pattern\" has an authorized_keys file" >> sudoer_keys_audit.txt
+
+                #remediation
+                if [ "$REMEDIATE" = true ]; then
+                    read -p "Remove $pattern's authorized_keys file? (y/n) " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
+                        if [ $? -eq 0 ]; then
+                            log "SUCCESS" "Removed $pattern's authorized_keys file"
+                        else
+                            log "ERROR" "Failed to remove $pattern's authorized_keys file"
+                        fi
+                    fi
+                fi
             fi
             
         fi
     done 3<sudoers_audit.txt
-    
 }
