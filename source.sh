@@ -609,25 +609,43 @@ audit_bashrc_files() {
 
 
 check_users(){
-# Source: https://praneethreddybilakanti.medium.com/how-to-get-list-of-users-in-linux-79b9607a3d7a#:~:text=You%20can%20modify%20the%20regular,exclude%20or%20include%20specific%20accounts.&text=In%20this%20command%2C%20cat%20%2Fetc,each%20line%20of%20the%20output.
-found_users=$(cat /etc/shadow | awk -F: '{print $1}' | grep -vE '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|_apt|systemd-network|systemd-resolve|messagebus|systemd-timesync|pollinate|sshd|ubuntu|tss|rtkit|kernoops|systemd-oom|whoopsie|usbmux|nm-openvpn|dnsmasq|avahi|cups-pk-helper|sssd|speech-dispatcher|fwupd-refresh|saned|colord|geoclue|pulse|gnome-initial-setup|hplip|gdm|dhcpcd|uuidd|syslog|tcpdump|cups-browsed|gnome-remote-desktop|polkitd|colorblind|bob|mysql|jason)')
+	log "INFO" "Checking users on the system..."
+	# Source: https://praneethreddybilakanti.medium.com/how-to-get-list-of-users-in-linux-79b9607a3d7a#:~:text=You%20can%20modify%20the%20regular,exclude%20or%20include%20specific%20accounts.&text=In%20this%20command%2C%20cat%20%2Fetc,each%20line%20of%20the%20output.
+	found_users=$(cat /etc/shadow | awk -F: '{print $1}' | grep -vE '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|_apt|systemd-network|systemd-resolve|messagebus|systemd-timesync|pollinate|sshd|ubuntu|tss|rtkit|kernoops|systemd-oom|whoopsie|usbmux|nm-openvpn|dnsmasq|avahi|cups-pk-helper|sssd|speech-dispatcher|fwupd-refresh|saned|colord|geoclue|pulse|gnome-initial-setup|hplip|gdm|dhcpcd|uuidd|syslog|tcpdump|cups-browsed|gnome-remote-desktop|polkitd|colorblind|bob|mysql|jason)')
 
-for user in $found_users; do
-	log "WARNING" "Unexpected user '$user' found"
-	echo "$user" >> unexpected_users.txt
+	for user in $found_users; do
+		log "WARNING" "Unexpected user '$user' found"
+		echo "$user" >> unexpected_users.txt
 
-	if [ "$REMEDIATE" = true ]; then
-		read -p "Disable user '$user'? (y/n) " -n 1 -r
-		echo
-		if [[ $REPLY =~ ^[Yy]$ ]]; then
-			usermod -L "$user"
-			if [ $? -eq 0 ]; then
-				log "SUCCESS" "User '$user' has been disabled"
-			else
-				log "ERROR" "Failed to disable user '$user'"
+		if [ "$REMEDIATE" = true ]; then
+			read -p "Disable user '$user'? (y/n) " -n 1 -r
+			echo
+			if [[ $REPLY =~ ^[Yy]$ ]]; then
+				usermod -L "$user"
+				if [ $? -eq 0 ]; then
+					log "SUCCESS" "User '$user' has been disabled"
+				else
+					log "ERROR" "Failed to disable user '$user'"
+				fi
 			fi
 		fi
-	fi
-done
+	done
+}
 
+check_services(){
+	log "INFO" "Checking for malicious services running on the system..."
+	found_services=$()
+
+}
+
+check_PAM(){
+	#check when files were last modified?
+	# if modified recently, reinstall PAM?
+
+}
+
+check_file_permissions(){
+	# /etc/shadow
+	# /etc/passwd
+	# any other important files
 }
