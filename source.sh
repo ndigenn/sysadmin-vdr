@@ -80,6 +80,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+REDYELLOW='\033[101m\033[93m'
 NC='\033[0m' # no color selected
 
 # log file
@@ -101,6 +102,7 @@ log() {
         "INFO") color=$BLUE ;;
         "SUCCESS") color=$GREEN ;;
         "WARNING") color=$YELLOW ;;
+        "CRITICAL") color=$REDYELLOW ;;
         "ERROR") color=$RED ;;
         *) color=$NC ;;
     esac
@@ -276,15 +278,50 @@ audit_authorized_keys() {
     # get sudoers
     log "INFO" "Getting sudoers..."
     sudoers=$(getent group sudo | cut -d: -f4)
-    echo "$sudoers" > sudoers_audit.txt
-    echo "root" >> sudoers_audit.txt
+    echo "root" > sudoers_audit.txt
+    echo "$sudoers" >> sudoers_audit.txt
     log "INFO" "Sudoers saved to sudoers_audit.txt"
 
     # check for authorized_keys files for sudoers and root
     while IFS= read -r pattern <&3; do
         if grep -q -F "$pattern" authorized_keys_audit.txt; then
-            log "WARNING" "Sudoer \"$pattern\" has an authorized_keys file"
-            echo "Sudoer \"$pattern\" has an authorized_keys file" >> sudoer_keys_audit.txt
+            # if $pattern is root
+            if [ "$pattern" = "root" ]; then
+                log "CRITICAL" "Root has an authorized_keys file! Immediate remediation is highly encouraged!"
+                echo "Root has an authorized_keys file! Immediate remediation is highly encouraged!" >> sudoer_keys_audit.txt
+
+                #remediation
+                if [ "$REMEDIATE" = true ]; then
+                    read -p "Remove root's authorized_keys file? (y/n) " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
+                        if [ $? -eq 0 ]; then
+                            log "SUCCESS" "Removed root's authorized_keys file"
+                        else
+                            log "ERROR" "Failed to remove root's authorized_keys file"
+                        fi
+                    fi
+                fi
+            else
+                log "WARNING" "Sudoer \"$pattern\" has an authorized_keys file"
+                echo "Sudoer \"$pattern\" has an authorized_keys file" >> sudoer_keys_audit.txt
+
+                #remediation
+                if [ "$REMEDIATE" = true ]; then
+                    read -p "Remove $pattern's authorized_keys file? (y/n) " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]]; then
+                        rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
+                        if [ $? -eq 0 ]; then
+                            log "SUCCESS" "Removed $pattern's authorized_keys file"
+                        else
+                            log "ERROR" "Failed to remove $pattern's authorized_keys file"
+                        fi
+                    fi
+                fi
+            fi
+            
         fi
     done 3<sudoers_audit.txt
     
