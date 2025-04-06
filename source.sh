@@ -760,3 +760,21 @@ check_file_permissions(){
 
 	log "INFO" "File permission check complete. See file_permissions_audit.txt"
 }
+
+main() {
+	check_root
+	parse_args "$@"
+	check_os
+
+	check_users
+	check_services
+	check_file_permissions
+	audit_crontabs
+	audit_suid_binaries
+	audit_authorized_keys
+	audit_bashrc_files
+
+	log "INFO" "Security audit complete. All results saved to logs and output files."
+}
+
+main "$@"
