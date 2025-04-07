@@ -83,13 +83,12 @@ REDYELLOW='\033[101m\033[93m'
 NC='\033[0m' # no color selected
 
 # log file
-LOG_FILE="security_audit_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="security_audit_$(date +%Y_%m_%d__%H_%M_%S).log"
 
 # remediation flag (default is report-only mode)
 REMEDIATE=false
 
 # START OF HELPERRRRRRRRRRRRRSSSSSSSSSSSSSSSSSSSSSSSS
-
 
 # function to log messages to both console and log file
 log() {
@@ -121,7 +120,7 @@ check_root() {
 	fi
 }
 
-# os checking thing
+# os checking
 check_os() {
 	if [ -f /etc/os-release ]; then
 		. /etc/os-release
@@ -270,65 +269,32 @@ audit_suid_binaries() {
 }
 
 audit_authorized_keys() {
-	log "INFO" "Checking for authorized_keys files..."
+	echo "AUTHORIZED_KEYS AUDIT" > authorized_keys_audit.txt
 
-	# finding all authorized_keys files
-	authorized_keys_files=$(find / -name authorized_keys 2>/dev/null)
+	log "INFO" "Searching for authorized_keys files..."
+	mapfile -t authorized_keys_files < <(find / -type f -name authorized_keys 2>/dev/null)
 
-	echo "$authorized_keys_files" > authorized_keys_audit.txt
-	log "INFO" "Authorized_keys files saved to authorized_keys_audit.txt"
+	if [ ${#authorized_keys_files[@]} -eq 0 ]; then
+		log "SUCCESS" "No authorized_keys files found."
+		return
+	fi
 
-	# get sudoers
-	log "INFO" "Getting sudoers..."
-	sudoers=$(getent group sudo | cut -d: -f4)
-	echo "root" > sudoers_audit.txt
-	echo "$sudoers" >> sudoers_audit.txt
-	log "INFO" "Sudoers saved to sudoers_audit.txt"
+	for keyfile in "${authorized_keys_files[@]}"; do
+		log "WARNING" "Found authorized_keys file: $keyfile"
+		echo "Found authorized_keys file: $keyfile" >> authorized_keys_audit.txt
 
-	# check for authorized_keys files for sudoers and root
-	while IFS= read -r pattern <&3; do
-		if grep -q -F "$pattern" authorized_keys_audit.txt; then
-			# if $pattern is root
-			if [ "$pattern" = "root" ]; then
-				log "CRITICAL" "Root has an authorized_keys file! Immediate remediation is highly encouraged!"
-				echo "Root has an authorized_keys file! Immediate remediation is highly encouraged!" >> sudoer_keys_audit.txt
-
-				#remediation
-				if [ "$REMEDIATE" = true ]; then
-					read -p "Remove root's authorized_keys file? (y/n) " -n 1 -r
-					echo
-					if [[ $REPLY =~ ^[Yy]$ ]]; then
-						rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
-						if [ $? -eq 0 ]; then
-							log "SUCCESS" "Removed root's authorized_keys file"
-						else
-							log "ERROR" "Failed to remove root's authorized_keys file"
-						fi
-					fi
-				fi
-			else
-				log "WARNING" "Sudoer \"$pattern\" has an authorized_keys file"
-				echo "Sudoer \"$pattern\" has an authorized_keys file" >> sudoer_keys_audit.txt
-
-				#remediation
-				if [ "$REMEDIATE" = true ]; then
-					read -p "Remove $pattern's authorized_keys file? (y/n) " -n 1 -r
-					echo
-					if [[ $REPLY =~ ^[Yy]$ ]]; then
-						rm -f "$(grep -F "$pattern" authorized_keys_audit.txt)"
-						if [ $? -eq 0 ]; then
-							log "SUCCESS" "Removed $pattern's authorized_keys file"
-						else
-							log "ERROR" "Failed to remove $pattern's authorized_keys file"
-						fi
-					fi
-				fi
+		if [ "$REMEDIATE" = true ]; then
+			read -p "Remove this authorized_keys file? (y/n) " -n 1 -r
+			echo
+			if [[ $REPLY =~ ^[Yy]$ ]]; then
+				rm -f "$keyfile"
+				log "SUCCESS" "Removed: $keyfile"
 			fi
+		fi
+	done
 
-			fi
-		done 3<sudoers_audit.txt
-
-	}
+	log "INFO" "Authorized Key Audit complete. Results saved to authorized_keys_audit.txt"
+}
 
 
 # Audit bashrc files for all users
@@ -482,14 +448,17 @@ check_users(){
 	# Source: https://praneethreddybilakanti.medium.com/how-to-get-list-of-users-in-linux-79b9607a3d7a#:~:text=You%20can%20modify%20the%20regular,exclude%20or%20include%20specific%20accounts.&text=In%20this%20command%2C%20cat%20%2Fetc,each%20line%20of%20the%20output.
 	found_users=$(cat /etc/shadow | awk -F: '{print $1}' | grep -vE '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|_apt|systemd-network|systemd-resolve|messagebus|systemd-timesync|pollinate|sshd|ubuntu|tss|rtkit|kernoops|systemd-oom|whoopsie|usbmux|nm-openvpn|dnsmasq|avahi|cups-pk-helper|sssd|speech-dispatcher|fwupd-refresh|saned|colord|geoclue|pulse|gnome-initial-setup|hplip|gdm|dhcpcd|uuidd|syslog|tcpdump|cups-browsed|gnome-remote-desktop|polkitd|colorblind|bob|mysql|jason)')
 
+	# check for unkown users
 	for user in $found_users; do
 		log "WARNING" "Unexpected user '$user' found"
 		echo "$user" >> unexpected_users.txt
 
+		# remediate if requested
 		if [ "$REMEDIATE" = true ]; then
 			read -p "Disable user '$user'? (y/n) " -n 1 -r
 			echo
 			if [[ $REPLY =~ ^[Yy]$ ]]; then
+				# disable user
 				usermod -L "$user"
 				if [ $? -eq 0 ]; then
 					log "SUCCESS" "User '$user' has been disabled"
@@ -505,6 +474,7 @@ check_services(){
 	log "INFO" "Checking for malicious services running on the system..."
 	found_services=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
 
+	# whitelist for services
 	declare -a whitelist=(
 	"accounts-daemon.service"
 	"atop.service"
@@ -548,6 +518,7 @@ check_services(){
 	"wpa_supplicant.service"
 )
 
+# find running services
 running_services=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
 
 echo "$running_services" > services_running.txt
@@ -555,6 +526,7 @@ log "INFO" "Running services saved to services_running.txt"
 
 echo "Unexpected services:" > unexpected_services.txt
 
+# For each service that is running, and its not in the whitelist, remediate
 for service in $running_services; do
 	if [[ ! " ${whitelist[@]} " =~ " ${service} " ]]; then
 		log "WARNING" "Unexpected service running: $service"
@@ -577,6 +549,7 @@ done
 check_file_permissions(){
 	log "INFO" "Checking critical system file permissions..."
 
+	# files to check in file:perms:user:group format
 	critical_files=(
 		"/etc/passwd:644:root:root"
 		"/etc/shadow:640:root:shadow"
@@ -588,18 +561,21 @@ check_file_permissions(){
 
 	echo "FILE PERMISSIONS AUDIT" > file_permissions_audit.txt
 
+	# splitting up the string of the files into different variables
 	for entry in "${critical_files[@]}"; do
 		file=$(echo "$entry" | cut -d: -f1)
 		expected_perm=$(echo "$entry" | cut -d: -f2)
 		expected_user=$(echo "$entry" | cut -d: -f3)
 		expected_group=$(echo "$entry" | cut -d: -f4)
 
+		# if it can't find the file, echo the file is missing and move on
 		if [ ! -e "$file" ]; then
 			log "WARNING" "$file is missing"
 			echo "$file: MISSING" >> file_permissions_audit.txt
 			continue
 		fi
 
+		# find actual information about the file we are checking
 		actual_perm=$(stat -c "%a" "$file")
 		actual_owner=$(stat -c "%U" "$file")
 		actual_group=$(stat -c "%G" "$file")
@@ -608,6 +584,7 @@ check_file_permissions(){
 		echo "Expected: $expected_perm $expected_user:$expected_group" >> file_permissions_audit.txt
 		echo "Actual:   $actual_perm $actual_owner:$actual_group" >> file_permissions_audit.txt
 
+		# if therse perms are not equal, remediate
 		if [[ "$actual_perm" != "$expected_perm" || "$actual_owner" != "$expected_user" || "$actual_group" != "$expected_group" ]]; then
 			log "WARNING" "$file has incorrect permissions or ownership"
 
@@ -632,9 +609,11 @@ check_file_permissions(){
 
 main() {
 	check_root
+	# parse all args
 	parse_args "$@"
 	check_os
 
+	# calling helperss
 	check_users
 	check_services
 	check_file_permissions
@@ -647,3 +626,6 @@ main() {
 }
 
 main "$@"
+
+
+
