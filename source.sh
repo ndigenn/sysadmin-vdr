@@ -241,6 +241,10 @@ audit_suid_binaries() {
 	# checking with the list mentioned
 	echo "Unexpected SUID binaries:" > unexpected_suid.txt
 	for binary in $suid_bins; do
+		if [[ "$binary" == /snap/* ]]; then
+			continue
+		fi
+
 		is_expected=false
 		for expected in "${expected_suid[@]}"; do
 			if [ "$binary" = "$expected" ]; then
