@@ -330,39 +330,39 @@ audit_authorized_keys() {
 
 	}
 
-#COMMENT THIS OUT IF IT CAUSES ISSUES!!!
+
 # Audit bashrc files for all users
 audit_bashrc_files() {
-	log "INFO" "Checking .bashrc files for all users..."
+	log "INFO" "Checking .bashrc files for malicious patterns..."
 
 	# Patterns to search for in .bashrc files
-	# These are common indicators of malicious content in bashrc files
+	# These are common indicators of malicious content
 	declare -a suspicious_patterns=(
-	# Command execution & reverse shells
-	"nc -e" "ncat -e" "bash -i" "sh -i" "netcat" "wget.*sh" "curl.*sh"
-	# Common backdoor ports
-	"\<4444\>" "\<1337\>" "\<31337\>" "\<6667\>" "\<6697\>" "\<8080\>" "\<443\>"
-	# Command interception/hijacking
-	"alias sudo=" "function sudo" "alias ls=" "alias cd=" "alias grep=" "alias find="
-	# Credential theft
-	"HISTFILE=/dev/" "HISTFILE=/tmp" "unset HISTFILE" "HISTSIZE=0" "HISTFILESIZE=0"
-	# Data exfiltration
-	"base64.*curl" "base64.*wget" "curl.*POST" "wget.*POST"
-	# Command capturing
-	"tee ~/.keylog" "script.*-f" "logger -p"
-	# Environment variable manipulation
-	"LD_PRELOAD=" "LD_LIBRARY_PATH="
-	# SSH key manipulation
-	"ssh-keygen.*-f" "echo.*ssh"
-	# Cron manipulation
-	"crontab -e" "crontab -r" "echo.*crontab"
-	# Script execution on login
-	"bash.*-c" "sh.*-c" "python.*-c" "perl.*-e" "eval.*(" "exec.*("
-)
+		# Command execution & reverse shells
+		"nc -e" "ncat -e" "bash -i" "sh -i" "netcat" "wget.*sh" "curl.*sh"
+		# Common backdoor ports
+		"\<4444\>" "\<1337\>" "\<31337\>" "\<6667\>" "\<6697\>" "\<8080\>" "\<443\>"
+		# Command interception/hijacking
+		"alias sudo=" "function sudo" "alias ls=" "alias cd=" "alias grep=" "alias find="
+		# Credential theft
+		"HISTFILE=/dev/" "HISTFILE=/tmp" "unset HISTFILE" "HISTSIZE=0" "HISTFILESIZE=0"
+		# Data exfiltration
+		"base64.*curl" "base64.*wget" "curl.*POST" "wget.*POST"
+		# Command capturing
+		"tee ~/.keylog" "script.*-f" "logger -p"
+		# Environment variable manipulation
+		"LD_PRELOAD=" "LD_LIBRARY_PATH="
+		# SSH key manipulation
+		"ssh-keygen.*-f" "echo.*ssh"
+		# Cron manipulation
+		"crontab -e" "crontab -r" "echo.*crontab"
+		# Script execution on login
+		"bash.*-c" "sh.*-c" "python.*-c" "perl.*-e" "eval.*(" "exec.*("
+	)
 
 	# Store bashrc audit results in a file
 	echo "========== BASHRC AUDIT RESULTS ==========" > bashrc_audit.txt
-
+	
 	# Count to track suspicious files
 	suspicious_count=0
 
@@ -376,54 +376,7 @@ audit_bashrc_files() {
 		# Check if .bashrc exists
 		if [ -f "$home_dir/.bashrc" ]; then
 			echo -e "\n=== User: $username ===" >> bashrc_audit.txt
-
-			# Check file permissions
-			bashrc_perms=$(stat -c "%a" "$home_dir/.bashrc")
-			echo "File permissions: $bashrc_perms" >> bashrc_audit.txt
-
-			# Check ownership
-			bashrc_owner=$(stat -c "%U:%G" "$home_dir/.bashrc")
-			echo "Owner/Group: $bashrc_owner" >> bashrc_audit.txt
-
-			# Check modification time
-			mod_time=$(stat -c "%y" "$home_dir/.bashrc")
-			echo "Last modified: $mod_time" >> bashrc_audit.txt
-
-			# Check file size
-			file_size=$(stat -c "%s" "$home_dir/.bashrc")
-			echo "File size: $file_size bytes" >> bashrc_audit.txt
-
-			# Check if permissions are too open
-			if [[ "$bashrc_perms" != "644" && "$bashrc_perms" != "600" ]]; then
-				log "WARNING" "Unusual permissions ($bashrc_perms) on $username's .bashrc file"
-				echo "WARNING: Unusual permissions - expected 644 or 600" >> bashrc_audit.txt
-
-				if [ "$REMEDIATE" = true ]; then
-					read -p "Fix permissions for $home_dir/.bashrc to 644? (y/n) " -n 1 -r
-					echo
-					if [[ $REPLY =~ ^[Yy]$ ]]; then
-						chmod 644 "$home_dir/.bashrc"
-						log "SUCCESS" "Fixed permissions on $home_dir/.bashrc"
-					fi
-				fi
-			fi
-
-			# Check if owner is correct
-			expected_owner="${username}:"
-			if [[ ! "$bashrc_owner" =~ ^$expected_owner ]]; then
-				log "WARNING" "Wrong ownership on $username's .bashrc file: $bashrc_owner"
-				echo "WARNING: Wrong ownership - expected to start with $username" >> bashrc_audit.txt
-
-				if [ "$REMEDIATE" = true ]; then
-					read -p "Fix ownership for $home_dir/.bashrc to $username? (y/n) " -n 1 -r
-					echo
-					if [[ $REPLY =~ ^[Yy]$ ]]; then
-						chown "$username" "$home_dir/.bashrc"
-						log "SUCCESS" "Fixed ownership on $home_dir/.bashrc"
-					fi
-				fi
-			fi
-
+			
 			# Check for suspicious patterns
 			suspicious_found=false
 			for pattern in "${suspicious_patterns[@]}"; do
@@ -455,94 +408,23 @@ audit_bashrc_files() {
 							log "SUCCESS" "Commented out suspicious lines containing '$pattern' in $home_dir/.bashrc"
 						fi
 					fi
-					fi
-				done
-
-			# Check for recently added lines (compare with default Ubuntu .bashrc if possible)
-			if [ -f "/etc/skel/.bashrc" ]; then
-				diff_output=$(diff -u "/etc/skel/.bashrc" "$home_dir/.bashrc")
-				if [ -n "$diff_output" ]; then
-					echo -e "\n--- Differences from default .bashrc ---" >> bashrc_audit.txt
-					echo "$diff_output" >> bashrc_audit.txt
-
-					# Check if there are significant additions
-					additions=$(echo "$diff_output" | grep -c "^+[^+]")
-					if [ "$additions" -gt 5 ]; then
-						log "INFO" "Found $additions added lines in $username's .bashrc compared to default"
-					fi
-					fi
-				fi
-
-			# Check for environment path alterations
-			if grep -q "export PATH=" "$home_dir/.bashrc"; then
-				echo -e "\n--- PATH modifications ---" >> bashrc_audit.txt
-				grep -n "export PATH=" "$home_dir/.bashrc" >> bashrc_audit.txt
-
-				# Check for suspicious path locations
-				if grep -q "export PATH=.*\(/tmp\|/dev\|/var/tmp\)" "$home_dir/.bashrc"; then
-					log "WARNING" "Suspicious PATH modification in $username's .bashrc"
-					echo "WARNING: Suspicious PATH includes temporary directories" >> bashrc_audit.txt
-
-					if [ "$REMEDIATE" = true ]; then
-						read -p "Comment out suspicious PATH modifications? (y/n) " -n 1 -r
-						echo
-						if [[ $REPLY =~ ^[Yy]$ ]]; then
-							cp "$home_dir/.bashrc" "$home_dir/.bashrc.bak-path-$(date +%Y%m%d-%H%M%S)"
-							sed -i '/export PATH=.*\(\/tmp\|\/dev\|\/var\/tmp\)/s/^/# DISABLED BY SECURITY AUDIT: /' "$home_dir/.bashrc"
-							log "SUCCESS" "Commented out suspicious PATH modifications in $home_dir/.bashrc"
-						fi
-					fi
-				fi
-			fi
-
-			# Check for other suspicious rc files
-			for rc_file in "$home_dir/.bash_profile" "$home_dir/.profile" "$home_dir/.bash_login" "$home_dir/.bash_logout"; do
-				if [ -f "$rc_file" ]; then
-					echo -e "\n--- Related file: $(basename "$rc_file") ---" >> bashrc_audit.txt
-
-					# Check for suspicious content in related files
-					suspicious_in_related=false
-					for pattern in "${suspicious_patterns[@]}"; do
-						if grep -q "$pattern" "$rc_file"; then
-							if [ "$suspicious_in_related" = false ]; then
-								suspicious_in_related=true
-								log "WARNING" "Suspicious content found in $username's $(basename "$rc_file")"
-								echo "SUSPICIOUS CONTENT FOUND IN $(basename "$rc_file"):" >> bashrc_audit.txt
-							fi
-
-							echo -e "\n--- Pattern: $pattern ---" >> bashrc_audit.txt
-							grep -n --color=never "$pattern" "$rc_file" >> bashrc_audit.txt
-						fi
-					done
-
-					if [ "$suspicious_in_related" = false ]; then
-						echo "No suspicious content detected" >> bashrc_audit.txt
-					fi
 				fi
 			done
+			
+			if [ "$suspicious_found" = false ]; then
+				echo "No suspicious content detected" >> bashrc_audit.txt
+			fi
 		else
 			log "INFO" "No .bashrc file found for user $username"
 			echo -e "\n=== User: $username ===" >> bashrc_audit.txt
 			echo "No .bashrc file found" >> bashrc_audit.txt
-			fi
-		done < /etc/passwd
+		fi
+	done < /etc/passwd
 
 	# Check for global bashrc files
 	for global_rc in "/etc/bash.bashrc" "/etc/profile" "/etc/profile.d/"*; do
 		if [ -f "$global_rc" ]; then
 			echo -e "\n=== Global RC file: $global_rc ===" >> bashrc_audit.txt
-
-			# Check file permissions
-			global_perms=$(stat -c "%a" "$global_rc")
-			echo "File permissions: $global_perms" >> bashrc_audit.txt
-
-			# Check ownership
-			global_owner=$(stat -c "%U:%G" "$global_rc")
-			echo "Owner/Group: $global_owner" >> bashrc_audit.txt
-
-			# Check modification time
-			global_mod_time=$(stat -c "%y" "$global_rc")
-			echo "Last modified: $global_mod_time" >> bashrc_audit.txt
 
 			# Check for suspicious patterns in global rc files
 			suspicious_in_global=false
@@ -575,31 +457,14 @@ audit_bashrc_files() {
 							log "SUCCESS" "Commented out suspicious lines containing '$pattern' in $global_rc"
 						fi
 					fi
-					fi
-				done
-
-				if [ "$suspicious_in_global" = false ]; then
-					echo "No suspicious content detected" >> bashrc_audit.txt
-				fi
 				fi
 			done
 
-	# Check for SSH ForceCommand in sshd_config
-	if [ -f "/etc/ssh/sshd_config" ]; then
-		if grep -q "ForceCommand" "/etc/ssh/sshd_config"; then
-			echo -e "\n=== SSH ForceCommand Configuration ===" >> bashrc_audit.txt
-			grep -n "ForceCommand" "/etc/ssh/sshd_config" >> bashrc_audit.txt
-			log "INFO" "SSH ForceCommand found in sshd_config - verify it's legitimate"
+			if [ "$suspicious_in_global" = false ]; then
+				echo "No suspicious content detected" >> bashrc_audit.txt
+			fi
 		fi
-	fi
-
-	# Check for custom SSH RC files
-	if [ -f "/etc/ssh/sshrc" ]; then
-		echo -e "\n=== SSH RC File (/etc/ssh/sshrc) ===" >> bashrc_audit.txt
-		cat "/etc/ssh/sshrc" >> bashrc_audit.txt
-		log "WARNING" "Custom SSH RC file found at /etc/ssh/sshrc - verify it's legitimate"
-		suspicious_count=$((suspicious_count + 1))
-	fi
+	done
 
 	# Final summary
 	if [ "$suspicious_count" -gt 0 ]; then
