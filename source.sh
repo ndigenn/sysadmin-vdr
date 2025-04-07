@@ -261,7 +261,7 @@ audit_suid_binaries() {
 				read -p "Remove SUID bit from $binary? (y/n) " -n 1 -r
 				echo
 				if [[ $REPLY =~ ^[Yy]$ ]]; then
-					chmod u-s "$binary"
+					chmod 0755 "$binary"
 					log "SUCCESS" "Removed SUID bit from $binary"
 				fi
 			fi
