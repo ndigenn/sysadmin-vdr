@@ -1,19 +1,25 @@
 # System Administration Project: Vulnerability Detection & Remediation
 ## Group Members: Ike Rolader, Jacob Colson, Mathew Breland, Nicholas DiGennaro
-## System Requirements: Ubuntu 24.04
 
+## How to Run the Script
+1. Clone the Repo
+```sh
+git clone <url>
+```
 
-### TODO:
-What it needs to do:
-- Finds vulnerabilities
-- File permissions
-- User verification (sudoers file, etc password)
-- Unknown files (scripts on machine)
-- Unknown services (diff normal services)
-- Malicious Crontabs
-- Make necessary changes
-- Fix file permissions to specified policy (maybe theres something on the ubuntu website for standardized permissions)
-- Find all logged in users
-- Change /etc/sudoers file
-- systemctl stop and delete services (systemctl cat to find more info)
-- Find crontabs for all users and determine if they are malicious (find a way to decipher)
+2. Make the source script an executable
+```sh
+chmod +x source.sh
+```
+
+3. Run the script
+	- in normal mode (no changes will be made to the system)
+		 ```sh
+		 sudo ./source.sh
+		 ```
+	- in remediation mode (script will fix the vulnerabilities found)
+		 ```sh
+		 sudo ./source.sh --remediate
+		 ```
+
+4. Analyze the resulting files
