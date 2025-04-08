@@ -252,6 +252,7 @@ audit_suid_binaries() {
 			fi
 		done
 
+		# if not expected bianry, change permissions
 		if [ "$is_expected" = false ]; then
 			echo "$binary" >> unexpected_suid.txt
 			log "WARNING" "Unexpected SUID binary: $binary"
@@ -272,6 +273,7 @@ audit_authorized_keys() {
 	echo "AUTHORIZED_KEYS AUDIT" > authorized_keys_audit.txt
 
 	log "INFO" "Searching for authorized_keys files..."
+	# find all authorized_keys
 	mapfile -t authorized_keys_files < <(find / -type f -name authorized_keys 2>/dev/null)
 
 	if [ ${#authorized_keys_files[@]} -eq 0 ]; then
@@ -279,6 +281,7 @@ audit_authorized_keys() {
 		return
 	fi
 
+	# for each key found, remediate
 	for keyfile in "${authorized_keys_files[@]}"; do
 		log "WARNING" "Found authorized_keys file: $keyfile"
 		echo "Found authorized_keys file: $keyfile" >> authorized_keys_audit.txt
@@ -302,51 +305,33 @@ audit_bashrc_files() {
 	log "INFO" "Checking .bashrc files for malicious patterns..."
 
 	# Patterns to search for in .bashrc files
-	# These are common indicators of malicious content
 	declare -a suspicious_patterns=(
-		# Command execution & reverse shells
 		"nc -e" "ncat -e" "bash -i" "sh -i" "netcat" "wget.*sh" "curl.*sh"
-		# Common backdoor ports
 		"\<4444\>" "\<1337\>" "\<31337\>" "\<6667\>" "\<6697\>" "\<8080\>" "\<443\>"
-		# Command interception/hijacking
 		"alias sudo=" "function sudo" "alias ls=" "alias cd=" "alias grep=" "alias find="
-		# Credential theft
 		"HISTFILE=/dev/" "HISTFILE=/tmp" "unset HISTFILE" "HISTSIZE=0" "HISTFILESIZE=0"
-		# Data exfiltration
 		"base64.*curl" "base64.*wget" "curl.*POST" "wget.*POST"
-		# Command capturing
 		"tee ~/.keylog" "script.*-f" "logger -p"
-		# Environment variable manipulation
 		"LD_PRELOAD=" "LD_LIBRARY_PATH="
-		# SSH key manipulation
 		"ssh-keygen.*-f" "echo.*ssh"
-		# Cron manipulation
 		"crontab -e" "crontab -r" "echo.*crontab"
-		# Script execution on login
 		"bash.*-c" "sh.*-c" "python.*-c" "perl.*-e" "eval.*(" "exec.*("
 	)
 
-	# Store bashrc audit results in a file
 	echo "========== BASHRC AUDIT RESULTS ==========" > bashrc_audit.txt
-	
-	# Count to track suspicious files
 	suspicious_count=0
 
-	# Get all user home directories
 	while IFS=: read -r username _ uid _ _ home_dir _; do
-		# Skip system users (UID < 1000) except root
 		if [[ "$username" != "root" && "$uid" -lt 1000 ]]; then
 			continue
 		fi
 
-		# Check if .bashrc exists
 		if [ -f "$home_dir/.bashrc" ]; then
 			echo -e "\n=== User: $username ===" >> bashrc_audit.txt
-			
-			# Check for suspicious patterns
 			suspicious_found=false
+
 			for pattern in "${suspicious_patterns[@]}"; do
-				if grep -q "$pattern" "$home_dir/.bashrc"; then
+				if grep -qE "$pattern" "$home_dir/.bashrc"; then
 					if [ "$suspicious_found" = false ]; then
 						suspicious_found=true
 						suspicious_count=$((suspicious_count + 1))
@@ -355,28 +340,27 @@ audit_bashrc_files() {
 					fi
 
 					echo -e "\n--- Pattern: $pattern ---" >> bashrc_audit.txt
-					grep -n --color=never "$pattern" "$home_dir/.bashrc" >> bashrc_audit.txt
+					grep -n --color=never -E "$pattern" "$home_dir/.bashrc" >> bashrc_audit.txt
 
-					# If remediation is enabled, offer to comment out suspicious lines
 					if [ "$REMEDIATE" = true ]; then
 						echo -e "\nSuspicious lines containing '$pattern' in $home_dir/.bashrc:"
-						grep -n "$pattern" "$home_dir/.bashrc"
+						grep -n -E "$pattern" "$home_dir/.bashrc"
 
 						read -p "Comment out these lines? (y/n) " -n 1 -r
 						echo
 						if [[ $REPLY =~ ^[Yy]$ ]]; then
-							# Create backup
 							cp "$home_dir/.bashrc" "$home_dir/.bashrc.bak-$(date +%Y%m%d-%H%M%S)"
 							log "INFO" "Created backup of $home_dir/.bashrc"
 
-							# Comment out suspicious lines
-							sed -i "/$pattern/s/^/# DISABLED BY SECURITY AUDIT: /" "$home_dir/.bashrc"
+							# Escape pattern safely for sed
+							escaped_pattern=$(printf '%s\n' "$pattern" | sed 's/[]\/$*.^[]/\\&/g')
+							sed -i "/$escaped_pattern/ s/^/# DISABLED BY SECURITY AUDIT: /" "$home_dir/.bashrc"
 							log "SUCCESS" "Commented out suspicious lines containing '$pattern' in $home_dir/.bashrc"
 						fi
 					fi
 				fi
 			done
-			
+
 			if [ "$suspicious_found" = false ]; then
 				echo "No suspicious content detected" >> bashrc_audit.txt
 			fi
@@ -387,15 +371,13 @@ audit_bashrc_files() {
 		fi
 	done < /etc/passwd
 
-	# Check for global bashrc files
 	for global_rc in "/etc/bash.bashrc" "/etc/profile" "/etc/profile.d/"*; do
 		if [ -f "$global_rc" ]; then
 			echo -e "\n=== Global RC file: $global_rc ===" >> bashrc_audit.txt
-
-			# Check for suspicious patterns in global rc files
 			suspicious_in_global=false
+
 			for pattern in "${suspicious_patterns[@]}"; do
-				if grep -q "$pattern" "$global_rc"; then
+				if grep -qE "$pattern" "$global_rc"; then
 					if [ "$suspicious_in_global" = false ]; then
 						suspicious_in_global=true
 						suspicious_count=$((suspicious_count + 1))
@@ -404,22 +386,20 @@ audit_bashrc_files() {
 					fi
 
 					echo -e "\n--- Pattern: $pattern ---" >> bashrc_audit.txt
-					grep -n --color=never "$pattern" "$global_rc" >> bashrc_audit.txt
+					grep -n --color=never -E "$pattern" "$global_rc" >> bashrc_audit.txt
 
-					# If remediation is enabled, offer to comment out suspicious lines
 					if [ "$REMEDIATE" = true ]; then
 						echo -e "\nSuspicious lines containing '$pattern' in $global_rc:"
-						grep -n "$pattern" "$global_rc"
+						grep -n -E "$pattern" "$global_rc"
 
 						read -p "Comment out these lines? (y/n) " -n 1 -r
 						echo
 						if [[ $REPLY =~ ^[Yy]$ ]]; then
-							# Create backup
 							cp "$global_rc" "$global_rc.bak-$(date +%Y%m%d-%H%M%S)"
 							log "INFO" "Created backup of $global_rc"
 
-							# Comment out suspicious lines
-							sed -i "/$pattern/s/^/# DISABLED BY SECURITY AUDIT: /" "$global_rc"
+							escaped_pattern=$(printf '%s\n' "$pattern" | sed 's/[]\/$*.^[]/\\&/g')
+							sed -i "/$escaped_pattern/ s/^/# DISABLED BY SECURITY AUDIT: /" "$global_rc"
 							log "SUCCESS" "Commented out suspicious lines containing '$pattern' in $global_rc"
 						fi
 					fi
@@ -432,7 +412,6 @@ audit_bashrc_files() {
 		fi
 	done
 
-	# Final summary
 	if [ "$suspicious_count" -gt 0 ]; then
 		log "WARNING" "Found $suspicious_count potentially malicious bashrc/profile configurations"
 	else
@@ -472,6 +451,7 @@ check_users(){
 
 check_services(){
 	log "INFO" "Checking for malicious services running on the system..."
+	# finding running services
 	found_services=$(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}')
 
 	# whitelist for services
@@ -626,6 +606,3 @@ main() {
 }
 
 main "$@"
-
-
-
